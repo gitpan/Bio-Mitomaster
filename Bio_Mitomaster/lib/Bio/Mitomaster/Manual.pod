@@ -1,0 +1,437 @@
+=pod
+
+=over 8
+
+=item Bio::Mitomaster Manual
+
+=back
+
+
+=head1 CONTENTS
+
+Read the OVERVIEW and BASICS first.
+
+=over
+
+=item OVERVIEW
+
+=item BASICS
+
+=item SEQS - analyzing mitochondrial sequences
+
+=item FILETYPES - supported file formats
+
+=item TREES - building phylogenetic trees from mtDNA (not implemented yet)
+
+=item COMPRESSION - creating efficient encodings for mtDNA sequences
+
+=item SPECIES - list of currently supported species and how to add new ones
+
+=item DOCUMENTATION - where to get more information
+
+=back
+
+=cut
+
+
+
+=head1 OVERVIEW
+
+Bio::Mitomaster is a software framework that makes it easy to create programs that analyze mitochondrial genomic data of species for which there is an established reference sequence.  This short manual provides an overview for its use and lists other sources of documentation.  
+This software is developed by Marty Brandon at the Center for Molecular and Mitochondrial Medicine and Genetics, located at UC, Irvine, and is free to use and modify as desired.  It's in regular use powering the online MITOMASTER analysis tools: L<http://mitomaster.bio.uci.edu>.
+
+=cut
+
+
+
+=head1 BASICS
+
+=head2 Bio::Mitomaster
+
+Always begin your analysis by creating a Bio::Mitomaster object.  Use this object to produce Seq objects, which can produce RNASeq objects, which can in turn produce AASeq objects.  Each type of object tries to somewhat mimic what you might expect in nature:
+
+ use Bio::Mitomaster;
+ $mm = Bio::Mitomaster->new;  # Always begin with this
+ print $mm->species;    # prints 'human', the default species
+
+
+Mitomaster objects are specific for a species-reference combination.  When not explicity specified, these default to 'human' and 'rCRS' (revised Cambridge sequence), respectively.
+
+ $mm = Bio::Mitomaster->new(species=>'human', reference=>'rCRS');  # same as above - 'human' and 'rCRS' are the defaults
+
+Your Mitomaster object serves mostly as a gateway to your analyses, but it can provide useful reference information:
+
+ print $mm->ref_seq(101,110);  # prints a string of ten nucleotides from the reference sequence starting at position 101.
+ $c = $mm->codon_code('TTT');  # $c is now 'F'
+
+
+
+
+=head2 Mitomaster Object Methods:
+
+All methods listed here are context-specific for the particular species analyzed.  The software does not "know" any details for a given species, but instead reads it in from species-specific data files.  This allows for easy extension, but makes adding the supporting data files for a species a prerequisite (see SPECIES section).
+
+
+
+=head3 codon_code
+
+Translates a three-letter codon into its single-letter IUPAC amino acid code.
+
+ $c = $mm->codon_code('TTT');  # $c is now 'F'
+
+
+
+=head3 species_list
+
+Returns a list of supported species, ref sequence combinations which are currently supported.  You might be interested in calling this as a class method, maybe from the command line?  That way you can quickly check to see which combinations are currently supported.
+
+ print "Bio::Mitomaster currently supporst the following species-refseq combinations:\n";
+ print Bio::Mitomaster::species_list();
+
+or from the command line:
+
+ perl -mBio::Mitomaster -e 'print Bio::Mitomaster::species_list';
+
+It should return something like:
+
+ 'human, rCRS'
+ . . .
+
+Those are the supported species and ref sequence combinations currently supported and can be used to instantiate your Bio::Mitomaster object.
+
+
+=head3 locus
+
+Returns information about the known locus regions within the reference genome.
+
+ my $hash_table_ref = $mm->locus;  # reference to a hash with locus numbers as indices each pointing to its own hash
+ my $locus_ref = $mm->locus(3);  # reference to a hash of info for locus number three
+
+
+
+=head3 protein
+
+Behaves the same as the locus method, but for the poly-peptides that are encoded (and characterized) by the genome.
+
+ my $protein_table_ref = $mm->protein;  # reference to a hash with locus numbers as indices each pointing to its own hash
+ my $protein_ref = $mm->locus(6);  # reference to a hash of info for the protein encoded by locus number six
+
+
+
+=head3 ref_seq
+
+Used to access the reference sequence.  This will be a nucleotide string when called on a Mitomaster object, but this method will produce an RNA or AA string when called on a different type of object (see below).
+
+ $mm->ref_seq          # string representing the full reference sequence
+ $mm->ref_seq($n)      # single moiety at position $n
+ $mm->ref_seq($s,$e)   # string of moieties in the range $s to $e
+
+If the first index is larger than the second and the wrapping attribute is set (see below) then the last nucleotide is assumed to be a neighbor to the first.  For human seqs using the rCRS as a reference
+
+ $mm->ref_seq(16567,2)
+
+produces the last three nucleotides with the first two concatenated to the end.
+
+
+=head3 seq
+
+Returns a Seq object representing a DNA sequence from either a sequence file or list of nucleotide variants.  This is the preferred way to produce Bio::Mitomaster::Seq objects, which are used to represent DNA sequences.  Think of the Mitomaster object as like a little factory for producing new Seq objects via the seq method.
+
+File names must have a recognizable extension to identify the type (see FILETYPES for supported types).  If you are using partial sequences, then a start and end values should be specified to prevent the gap as being detected as a large deletion.  See SEQS below for more about using Seq objects. 
+
+ $seq_obj = $mm->seq(file=>'my_file.fas');
+ $seq_obj = $mm->seq(variants=>{1=>'A', 3=>'C'});
+ $seq_obj = $mm->seq(file=>'my_file.fas', start=>577, end=>16023);
+
+
+
+=head3 transcript
+
+Returns either a string representing an RNA sequence from the reference sequence or a hash reference to a table of information depending on how it is called.  Calling it without any argument returns a reference to a table of all transcripts known for this species (indexed by locus ID#).  Specify a locus ID# as an argument and you get a string for that locus.  Adding position indices will return a substring.
+
+ $t = $mm->transcript(16);  # $t contains the transcript string for the Cytochrome oxidase subunit I
+ $t = $mm->transcript(16,1,10);  # same thing but only the first 10 nucleotides
+ $t = $mm->transcript();  # $t is a reference to a hash that contains all the mitochondrially encoded transcripts indexed by locus ID#
+
+
+
+=head3 translation
+
+Used to access the reference translation sequences.  Works just like the transcript method above, but for the reference poly-peptide sequences.
+
+
+
+=head3 wrapping
+
+This is a boolean value read from the meta-data for the species, which causes sequences to wrap when set.  There are actually three attributes (dna_wrapping, rna_wrapping, and aa_wrapping), but this is an alias for dna_wrapping (the one you probably want).  Generally, if your species has a circular genome, then you want this set, but it will probably be set automatically, so you don't really need to worry about it unless you are get sub sequences that cross the ending/beginning boundary and things are working as you would expect.  You can also force wrapping behavior for RNA and AA seqs by setting rna_wrap and aa_wrap, respectively.
+
+
+
+=head1 SEQS 
+
+Typically, you would begin an analysis by creating a Mitomaster object and then calling the seq method on that object to produce Seq objects (see seq method above).  A Seq object models a real DNA sequence.  It has a transcribe method that produces an RNASeq object, which itself has a translate method that produces an AASeq object.  SEQS (all caps) is used here to refer to Seq, RNASeq, and AASeq objects collectively since they share commonalities in their interface.  A nice thing about these SEQ objects is that they carry around access to their species reference information.  They also modify the behavior of their interface to match the context, so calling ref_seq on a Seq object produces a DNA nucleotide string, but when called on a RNASeq object it produces an RNA string.
+
+
+
+=head2 DNA Seqs
+
+To produce a new Seq object, a Mitomaster object needs either a list of variants or a sequence file (see FILETYPES for supported formats).
+
+ $dna_seq = $mm->seq(file=>'/tmp/my_file.fas');
+
+Assuming that 'my_file.fas' had been a properly formatted mtDNA fasta file, the above statement creates a new Bio::Mitomaster::Seq object using the seq method of the previously created Mitomaster object.  In creating the Seq object, the sequence read from the file will be automatically aligned with its reference and all variant nucleotides identified.
+
+
+ # Produce an ordered list of the variants found
+ $variants = $dna_seq->variants;
+ for (sort {$a <=> $b} keys %{$variants}) {
+     print $_, ' ', $variants->{$_};
+ }
+
+
+Seq objects can also be created from a list of variants.
+
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3=>'C'});
+ print $dna_seq->seq;  # AAC . . .
+ 
+The print statement above will display the full DNA sequence reconstructed from its ref sequence and the variants at positions 1 and 3.  The list of variants can also be put into a file with a .variants extension (see the variant File Type section).  Don't confuse the seq method of a Mitomaster object with the seq method of a Seq object.  Mitomaster objects are like little factories for producing Seq objects, while Seq objects use their seq method to reveal their string of nucleotides (RNASeq and AASeq objects behave similarly to Seq objects -- see below). 
+
+Deletions variants are represented with a '-'.
+
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3=>'-'});
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3=>'--'});  # a 2bp deletion at position 3
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3=>'-', 4=>'-'});  # the same sequence, but with two separate deletion events
+ print $dna_seq->seq;  # AA-- . . .
+
+Note that dashes are left in the string returned as placeholders for the deletions.  To remove them, use some basic Perl ($seq_string =~ s/-//g;).
+
+Specify insertions using decimal numbers.
+
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3.01=>'G'});  # a guanine insertion between positions 3 and 4
+
+Any decimal values will work so long as the numbers give the correct ordering of the variants.
+
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3.01=>'GA'});  # GA insertion between positions 3 and 4
+ $dna_seq = $mm->seq(variants=>{1=>'A', 3.001=>'G', 3.002=>'A'});  # Same thing
+
+
+Use start and end values to indicate partial sequences.
+
+ $dna_seq = $mm->seq(file=>'my_file.fas', start=>577, end=>16023);  # reading a fasta file with only partial coverage
+
+Now calling the seq method will produce a nucleotide string with everything before 'start' and after 'end' trimmed.  More importantly, the alignment algorithm will use the start and end values you provide, so that it doesn't create a large deletion variant for the region absent.  When not explicitly set, start and end default to the values for the reference sequence (1 and 16569 for the human rCRS sequence).  
+
+Put any other data you might want to associate with the sequence into the info hash.
+
+ $dna_seq = $mm->seq(file=>'my_file.fas', info=>{name=>'seq1', donor=>'Inuit'});  # associates a name and donor value
+
+Anything may be put into the info hash.  You choose the keys and values to use.  Anthing in the hash is available through a method called 'info':
+
+ print $dna_seq->info('name');  # prints 'seq1'
+
+Seq objects have a seq method.  Like the ref_seq method on Mitomaster objects, you can use it to return any part of a sequence by specifying position indices.
+
+ print $dna_seq->seq(101,110);  # displays a string representing 10 nucleotide positions
+
+
+
+=head2 RNA Seqs
+
+Having created a Seq object representing some DNA, you might now be interested in the RNA that would be transcribed, so use the transcribe method of a Seq to produce an RNASeq object representing the transcript that would be transcribed. 
+
+ $rna_seq = $dna_seq->transcribe(locus=>'13');
+
+RNASeq objects are specific to a particular locus region, so a locus ID value must be supplied to transcribe.  The locus method (see below) returns a table with all the defined loci regions.  You can also define an info hash for the transcript (see DNA Seq).
+
+
+
+=head2 AA Seqs
+
+As you might have expected, an RNASeq object has a translate method to produce an AASeq object that represents the poly-peptide sequence it would produce.
+
+ $aa_seq = $rna_seq->translate;
+
+Because RNASeq objects are for a specific locus region, it isn't necessary to specify the locus ID that you want translated (to translate a different locus, you need another RNASeq object).  You can also define an info hash for the translation (see DNA Seq). 
+
+
+So, the three varities of macromolecules are represented in this software as Seq, RNASeq, and AASeq objects for DNA, RNA, and AA, respectively.  Mitomaster objects are a sort of factory that you create first to establish the species and ref sequence context.  Mitomaster objects produce Seq objects with the seq method, Seq objects produce RNASeq objects with the transcribe method, and RNASeq objects produce AASeq objects with the translate method.  Each of these objects has a similar interface, but it functions contextually: calling seq on a Seq object will produce a string of nucleotides, while the same call on an AASeq object will produce a string of amino acids.  And all objects in the framework operate contextually according to the combination of species and ref sequence determined when you create the Mitomaster object.  
+
+
+
+=head2 SEQ Methods
+
+In addition to the methods below, Seq objects have all the methods for interrogating the reference sequence that Mitomaster objects have with the exception that the ref_seq method is context specific: calling ref_seq on a Seq object (DNA) will return a string representing DNA, while the same method call on an RNASeq object will produce a string representing RNA.  Reference sequence strings returned are also trimmed according to the start and end values specified when creating sequence objects (see below). 
+
+ $mm = Bio::Mitomaster->new;
+ $mm->ref_seq;  #returns the full reference sequence
+ $dna_seq = $mm->seq(start=>577, file=>'/tmp/my_file.fas');
+ $dna_seq->ref_seq;  #returns a ref seq minus the first 576 nucleotides
+
+
+=head3 variants
+
+The variants method seen for DNA Seq objects works equally well for RNA and AA Seq objects, though again the context is shifted to match the molecule, and position values refer to the transcript and translation position, respectively.  However, due to complications with frameshift, the variants stored in AA Seq objects are a little different.  Internally, AA Seq variants are stored as codons and only translated to amino acids, using the codon code for the particular species, as they are retrieved by the variants method.  However, you can instead switch to the underlying codon view by setting the show_codons flag on a AASeq object:
+
+ $aa_seq->show_codons(1);
+
+A reference to a hash of variants indexed by translation position will be retrieved as before, but instead of single-letter amino acid values, the codons are given.  Silent coding changes not listed in the normal list of variants will now be listed in the list of codon changes.  Variants causing a frameshift (indels) will have that information concatenated to the end of the codon value separated by a space.
+
+
+So this:
+
+ $variants = $aa_seq->variants;
+ for (sort keys {$a <=> $b} %{variants}) {
+    print $_, "\t", $variants->{$_}, "\n";
+ }
+
+might produce something like this:
+
+    2   ACA
+    10  CGC +1
+    12  CCG +1
+    13  GAA
+
+The interpretation: A codon change at the second amino acid, followed by a deletion in the 10th amino acid codon causing the frame to increment by one (insertions cause frame to decrement).  Though still frameshifted, there was no affect at the 11th amino acid position, meaning that the codon exactly matched the reference codon at position 11.  Position 12, still frameshifted from the upstream change, has another codon change.  Finally, there is a compensatory insertion at position 13 that causes the frame to return to normal, but with a codon change (a compensatory insertion that restored the codon to normal would not be listed).
+
+
+
+
+=head3 end
+
+
+Retrieves the sequence end value.  This value is readonly and set during the construction of the Seq object, either explicity as an argument to the constructor or by the software using either the default value of the ref sequence length or the end value detected by the alignment program.
+
+
+
+=head3 seq          
+
+ $seq->seq;         # string representing the full sequence
+ $seq->seq($n)      # single moiety at position $n
+ $seq->seq($s,$e)   # string of moieties in the range $s to $e
+
+
+Returns a string of all or part of the sequence represented by the Seq object.  Don't confuse this method with the seq method of Mitomaster objects.  The result of this method is a string value, while the Mitomaster seq method produces new Seq objects.  Similar to the ref_seq method, the result returned is contextual: a Seq object will return a string representing DNA, RNASeq produces RNA, and AASeq objects produce amino acid strings.  RNA and AA seqs are also assumed to be linear, so calling the seq method on an RNASeq object in which the start index is larger than the end index (e.g. $rna_seq->seq(500,10) will produce an error.
+
+
+
+=head3 start
+
+
+Retrieves the sequence start value.  This value is readonly and set during the construction of the Seq object, either explicity as an argument to the constructor or using the default value specified in the species meta-data file.
+
+
+
+
+=head3 transcribe
+
+
+Can only be called on a DNA Seq object and produces a Bio::Mitomaster::RNASeq object.  The locus ID designating the locus to be transcribed must be specified.  As you might expect, you will get an error if the locus you specify is not a coding one or the range of the Seq object does not cover the range of the locus.
+
+ $rna_seq = $dna_seq->transcribe(locus=>5);
+
+
+
+
+=head3 variants
+
+ $seq->variants(codons=>1)
+
+Retrieves a hash reference to the list of variants indexed by position.  Positions will always be with respect to the reference sequence used during instantiation, but will be with respect to the DNA sequence for DNA Seq objects and the transcript or translation for RNA and AA Seq objects.  Likewise, variants are adjusted to be single letter IUPAC codes representing DNA, RNA, or AA moieties.  When called on an AA Seq with the 'codons' flag set, codon values are returned, along with frame changes attached as a comma separated value.
+
+
+
+=head3 translate
+
+Can only be called on an RNA Seq object and produces a Bio::Mitomaster::AASeq object.  Unlike the transcribe method, no locus ID argment is needed since the RNA Seq object is specific for a particular locus. 
+
+ $aa_seq = $rna_seq->translate;
+ 
+
+
+
+
+=head1 FILETYPES
+ 
+
+=head2 Standard Types 
+ 
+File types must be correctly formatted and have a recognizable extension.  Supported types:
+
+ Type                   Extensions
+
+ fasta                  .fas, .fasta
+ genbank                .gen, .genbank
+ variant                .variant, .variants
+
+
+
+
+=head2 variant File Type
+
+Variant files combine the descriptor lines (the ones that begin with '>') used in fasta files with an abbreviated notation to describe variants.  Here's an example of variant file formatting:
+
+ >Seq1|Human|Inuit
+ 100A
+ 111-
+ 222--
+ 303-7
+ 455iCC
+
+Descriptive information about the sequence is on a line by itself following a '>'.  It can include multiple pieces of information separated by a pipe ('|').  Following the descriptor line are the variants specified using an abbreviated syntax.  The sequence above has a polymorphism, three deletions, and an insertion.  Deletions can be represented using a dash for each deleted nucleotide.  Multi-base deletions can also be expressed with a quantifier appended to the end of a dash.  This sequence has a 2bp deletion at 222 and a 7bp deletion beginning at position 303.  Insertions are represented with an 'i' followed by the actual insert.  In the example, there is a CC insertion following position 455.  You may want to look at the mtDNA variant examples posted at L<http://mammag.web.uci.edu/MITOMASTER/AlleleExamples>). 
+
+
+
+
+=head1 TREES
+
+This is a placeholder for phylogeny.  Still working on this.
+
+
+=head1 COMPRESSION
+
+This is a placeholder for compression work.  Need to rewrite and import my code here.
+
+
+
+=head1 SPECIES
+
+The Mitomaster software must have access to a data file containing meta data for each species that it analyzes.  This data includes things like the reference sequences, locus regions, transcript sequences, translation sequences, and codon code for that species.  This data is encoded in a single YAML (a very simple markup language) file.  Creating support for a new species is as simple as adding a new YAML file.  Any contribution of new species data is appreciated and there is a website to help facilitate the process: L<http://mitomaster.bio.uci.edu/MITOMASTER/SpeciesContrib>.
+
+
+=cut
+
+
+
+=head1 DOCUMENTATION
+
+Each module in this software includes its own POD documentation, accessible with the perldoc command (e.g. perldoc Bio::Mitomaster); however, most modules are not really intended to provide a public interface.  Those modules whose documentation you may want to have a look at:
+
+=over 4
+
+=item Bio::Mitomaster
+
+=item Bio::Mitomaster::Seq
+
+=item Bio::Mitomaster::RNASeq
+
+=item Bio::Mitomaster::AASeq
+
+=back
+
+
+You can email specific questions not addressed in the documentation to Marty Brandon C<mbrandon at computer.org>
+
+Bio::Mitomaster is distributed on the CPAN: L<http://search.cpan.org/dist/Bio-Mitomaster-MitoSeq/>
+
+
+
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2009 Marty Brandon, all rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+
+=cut

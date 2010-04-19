@@ -1,0 +1,47 @@
+Bio-Mitomaster
+
+THIS IS AN INITIAL UPLOAD THAT IS NOT QUITE FINISHED.  THIS CODE WORKS, BUT I AM STILL IMPORTING ALIGNMENT CODE FROM AN EARLIER VERSION.  IT SHOULD BE COMPLETED IN MAY 2010.
+
+Bio::Mitomaster is a software framework that makes it easy to create programs that analyze mitochondrial genomic data of species for which there is an established reference sequence.  It differs from more general frameworks, such as Bio::Perl, by incorporating a systematic method to make use of the species meta-data (e.g. reference sequence, locus positions, etc.).  You can get more information from the included manual (perldoc Bio::Mitomaster::Manual).
+
+
+INSTALLATION
+
+To install this module, run the following commands:
+
+	perl Build.PL
+	./Build
+	./Build test
+	./Build install
+
+
+SUPPORT AND DOCUMENTATION
+
+After installing, you can find documentation for this module with the
+perldoc command.
+
+    perldoc Bio::Mitomaster::Manual
+
+You can also look for information at:
+
+    RT, CPAN's request tracker
+        http://rt.cpan.org/NoAuth/Bugs.html?Dist=Bio-Mitomaster
+
+    AnnoCPAN, Annotated CPAN documentation
+        http://annocpan.org/dist/Bio-Mitomaster
+
+    CPAN Ratings
+        http://cpanratings.perl.org/d/Bio-Mitomaster
+
+    Search CPAN
+        http://search.cpan.org/dist/Bio-Mitomaster/
+
+
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2009 Marty Brandon
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
